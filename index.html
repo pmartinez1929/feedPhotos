@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Oil & Gas | Business School</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css?family=Lato:200,300,600&display=swap" rel="stylesheet">
+  
+  <link href="css/styles.css" rel="stylesheet">
+
+</head>
+<body>
+  <div class="container-web">
+    <div class="container">
+        <div class="logo-container">
+            <img class="img-responsive" src="img/logo_bussiness.svg" alt="Oil & Gas Business School"/>
+        </div>
+        <div>
+            <div class="input-container">
+                <button class="buttonSubmit2">GET CODE</button>
+                <button class="buttonSubmit">GET TOKEN</button>
+                <button class="buttonSubmit3">GET PHOTOS</button>
+                <button class="buttonSubmit4">PRINT PHOTOS</button>
+            </div>
+            <div class="graciasSus">Gracias por suscribirte</div>
+            <div class="photos-content">
+
+            </div>
+        </div>
+    </div>
+  </div>
+  
+  <script>
+      const inputText = document.querySelector(".inputTxt"),
+            buttonSubmit = document.querySelector(".buttonSubmit"),
+            buttonSubmit2 = document.querySelector(".buttonSubmit2"),
+            buttonSubmit3 = document.querySelector(".buttonSubmit3"),
+            buttonSubmit4 = document.querySelector(".buttonSubmit4"),
+            content_images = document.querySelector(".photos-content");
+      
+
+      buttonSubmit.addEventListener('click', getAuthToken);
+      buttonSubmit2.addEventListener('click', getAuthCode);
+      buttonSubmit3.addEventListener('click', getPhotos);
+      buttonSubmit4.addEventListener('click', printPhotos);
+
+      const api_id = 3044857445528935;
+      const app_secret = '670af3723f8f8db90d72c385dbde1290';
+      const redirect_Uri = 'https://www.lacomunidadpetrolera.com/feed_photos/';
+      const url_instagram = `https://api.instagram.com/oauth/authorize?app_id=${api_id}&redirect_uri=${redirect_Uri}&scope=user_profile,user_media&response_type=code`;
+      const url_accessToken = `https://api.instagram.com/oauth/access_token`;
+      let code_auth;
+      const posts_images = [];
+      const posts_instagram = [];
+
+      function getAuthToken(){
+        code_auth = window.location.href;
+        const code = code_auth.split('code=');
+        const auth_token = code[1].slice(0,-2);
+        
+        // data peticion access token
+        const data = new FormData();
+        data.append('app_id', api_id);
+        data.append('app_secret', app_secret);
+        data.append('code', auth_token);
+
+        fetch('curl.php', {
+            method: 'POST',
+            body: data
+          })
+          .then(function(response) { // blob
+            if(response.ok) {
+                return response.text()
+            } else {
+                throw "Error en la llamada Ajax";
+            }
+
+          })
+          .then(function(info) { // data => lo que retorna el php
+            const info_media = JSON.parse(info);
+            if(info_media){
+              const access_token = info_media[0];
+              const images_post = JSON.parse(info_media[1]);
+              const images_data = images_post.media.data;
+              getImagesData(images_data, access_token);
+            }
+          })
+          .catch(function(err) { // error
+          console.log(err);
+          });
+        
+      }
+
+      function getAuthCode(){
+        window.location.replace(url_instagram);
+      }
+
+      function getImagesData(images, access){
+        images.forEach( img => {
+          const data = new FormData();
+          data.append('media_id', img.id);
+          data.append('access_token', access);
+
+          fetch('media.php', {
+             method: 'POST',
+             body: data
+            })
+            .then(function(response) { // blob
+              if(response.ok) {
+                  return response.text()
+              } else {
+                  throw "Error en la llamada Ajax";
+              }
+
+            })
+            .then(function(info_images) { // data => lo que retorna el php
+              if(info_images){
+                const single_img_info = JSON.parse(info_images);
+                let link_temp;
+                if(single_img_info.media_type === 'VIDEO'){
+                  link_temp = single_img_info.thumbnail_url
+                }else{
+                  link_temp = single_img_info.media_url
+                }
+                const registro = {
+                  id: '',
+                  id_ins: single_img_info.id,
+                  image: `${single_img_info.id}.png`,
+                  link_ins: single_img_info.permalink,
+                  media_type: single_img_info.media_type,
+                  time: single_img_info.timestamp,
+                  username: single_img_info.username,
+                  link_temp: link_temp
+                };
+                if(registro.id_ins != ''){
+                  posts_instagram.push(registro);
+
+                }
+              }
+              
+            })
+            .catch(function(err) { // error
+            console.log(err);
+            });
+
+          });
+          //deleteRepeat();
+      }
+    
+      // get photos
+      function getPhotos(){
+        console.log(posts_instagram);
+        const res = posts_instagram.filter(({id_ins:a, item:x}) => !posts_images.some(({id_ins:b, item:y}) => a === b && x === y));
+        console.warn(res);
+        res.forEach(post => saveDatabase(post));
+      }
+
+      // database
+      function getDataBase(){
+        fetch('database.php', {
+          method: 'GET',
+          })
+          .then(function(response) { // blob
+          if(response.ok) {
+              return response.text()
+          } else {
+              throw "Error en la llamada Ajax";
+          }
+
+          })
+          .then(function(texto) { // data => lo que retorna el php
+              const resultData = JSON.parse(texto);
+              resultData.forEach( data => posts_images.push(data));
+              console.log(posts_images);
+          })
+          .catch(function(err) { // error
+          console.log(err);
+        });
+      }
+
+      function saveDatabase(post){
+        
+        let image_data;
+        convertImgToDataURLviaCanvas( post.link_temp, function( base64_data ) {
+          image_data = base64_data;
+
+            const data = new FormData();
+            data.append('id_ins',post.id_ins);
+            data.append('media_type', post.media_type);
+            data.append('image', `${post.id_ins}.png`);
+            data.append('base64', image_data);
+            data.append('link_ins', post.link_ins);
+            data.append('time', post.time);
+            data.append('username', post.username);
+
+            fetch('instagram/upload.php', {
+              method: 'POST',
+              body: data
+              })
+              .then(function(response) { // blob
+              if(response.ok) {
+                  return response.text()
+              } else {
+                  throw "Error en la llamada Ajax";
+              }
+
+              })
+              .then(function(texto) { // data => lo que retorna el php
+                if(texto == 'Enviado'){
+                  console.log(texto)
+                }
+              })
+              .catch(function(err) { // error
+              console.log(err);
+          });
+        });
+      }
+     
+      // base 64
+      var convertImgToDataURLviaCanvas = function(url, callback) {
+      var img = new Image();
+
+      img.crossOrigin = 'Anonymous';
+
+      img.onload = function() {
+          var canvas = document.createElement('CANVAS');
+          var ctx = canvas.getContext('2d');
+          var dataURL;
+          canvas.height = this.height;
+          canvas.width = this.width;
+          ctx.drawImage(this, 0, 0);
+          dataURL = canvas.toDataURL();
+          callback(dataURL);
+          canvas = null;
+        };
+
+        img.src = url;
+      }
+
+      function printPhotos(){
+        console.log(content_images);
+        posts_images.forEach(post => {
+          console.log("print pass");
+          const html = `
+            <div class="photo_single">
+              <img src="instagram/${post.image}" alt=""/>
+              <div class="txt">${post.username}</div>
+            </div>
+          `;
+          content_images.innerHTML += html;
+        });
+        console.log(content_images);
+      }
+      /**/
+      window.addEventListener("DOMContentLoaded", getDataBase);
+  </script>
+</body>
+</html>
